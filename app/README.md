@@ -1,23 +1,23 @@
-# Konsinye Takip
+# Consignment Tracker
 
-Kolye, bileklik, yüzük, küpe gibi ürünlerinizi mağazalara konsinye (kira veya
-kâr yüzdesi karşılığı) bıraktığınızda; ürün, mağaza, anlaşma tipi ve satış
-durumunu takip etmenizi sağlayan basit bir web uygulaması.
+A simple web app for tracking jewelry (necklaces, bracelets, rings,
+earrings, etc.) that you place with stores on consignment, either for a
+fixed rent or a commission on each sale.
 
-## Özellikler
+## Features
 
-- **Ürünler**: Ürün adı, kategori (kolye, bileklik, yüzük, küpe, diğer) ve maliyet takibi.
-- **Mağazalar**: Mağaza bilgisi ve anlaşma tipi — sabit kira ya da kâr yüzdesi (komisyon).
-- **Konsinyeler**: Hangi üründen, hangi mağazaya, ne zaman, kaç adet bırakıldığı; durumu (mağazada bekliyor / satıldı / iade edildi) ve satış fiyatı.
-- **Panel**: Toplam ciro, kâr, satılan ürün adedi, bekleyen stok; durum dağılımı, mağazaya göre ciro, kategoriye göre satış ve aylık ciro grafikleri (Chart.js, projeye gömülü — internet gerektirmez).
+- **Products**: name, category (necklace, bracelet, ring, earring, other) and cost.
+- **Stores**: contact info and agreement type — fixed rent or commission (% of sale).
+- **Consignments**: which product went to which store, when, how many units, current status (in store / sold / returned), and sale price.
+- **Dashboard**: total revenue, profit, items sold, stock still in stores; status breakdown, revenue by store, items sold by category, and monthly revenue charts (Chart.js, bundled locally — no internet required).
 
-Kâr/komisyon hesaplaması: anlaşma tipi "komisyon" olan mağazalarda satış
-tutarının belirlenen yüzdesi mağazaya, kalanı size ait sayılır; kâr, size
-kalan tutardan ürün maliyetinin düşülmesiyle hesaplanır. "Kira" anlaşmalı
-mağazalarda satış tutarının tamamı size ait kabul edilir (kira ayrı bir
-sabit gider olarak mağaza kartında görünür).
+Profit calculation: for stores on a commission agreement, the agreed
+percentage of the sale goes to the store and the rest is yours; profit is
+what's left after subtracting the product's cost. For stores on a fixed
+rent agreement, the full sale amount is yours (rent is tracked separately
+as a fixed expense on the store's record).
 
-## Kurulum ve Çalıştırma
+## Setup & Run
 
 ```bash
 cd app
@@ -25,18 +25,17 @@ python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# (opsiyonel) örnek verilerle başlamak için
+# (optional) load sample data
 python3 seed.py
 
 python3 app.py
 ```
 
-Uygulama `http://127.0.0.1:5000` adresinde çalışır. Veriler proje klasöründeki
-`konsinye.db` (SQLite) dosyasında tutulur, ekstra bir veritabanı kurulumu
-gerekmez.
+The app runs at `http://127.0.0.1:5000`. Data is stored in `konsinye.db`
+(SQLite) inside the project folder — no separate database setup needed.
 
-## Teknoloji
+## Tech Stack
 
 - Python / Flask + Flask-SQLAlchemy (SQLite)
-- Jinja2 şablonları + saf CSS
-- Chart.js (MIT lisanslı, `static/chart.umd.min.js` içinde gömülü)
+- Jinja2 templates + plain CSS
+- Chart.js (MIT licensed, bundled in `static/chart.umd.min.js`)

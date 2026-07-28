@@ -1,36 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Mağazalar · Konsinye Takip{% endblock %}
+{% block title %}Stores · Consignment Tracker{% endblock %}
 {% block content %}
-  <h1>Mağazalar</h1>
+  <h1>Stores</h1>
 
   <section class="form-card">
-    <h2>Yeni Mağaza Ekle</h2>
+    <h2>Add New Store</h2>
     <form method="post" action="{{ url_for('add_store') }}" class="inline-form">
-      <label>Mağaza Adı
-        <input type="text" name="name" required placeholder="Örn. Vitrin Aksesuar">
+      <label>Store Name
+        <input type="text" name="name" required placeholder="e.g. Downtown Boutique">
       </label>
-      <label>İletişim
-        <input type="text" name="contact" placeholder="Telefon / adres">
+      <label>Contact
+        <input type="text" name="contact" placeholder="Phone / address">
       </label>
-      <label>Anlaşma Tipi
+      <label>Agreement Type
         <select name="agreement_type" id="agreement_type" onchange="toggleAgreementHint()">
           {% for t in agreement_types %}
-          <option value="{{ t }}">{{ "Kâr Yüzdesi (Komisyon)" if t == "komisyon" else "Sabit Kira" }}</option>
+          <option value="{{ t }}">{{ "Commission (% of sale)" if t == "commission" else "Fixed Rent" }}</option>
           {% endfor %}
         </select>
       </label>
       <label>
-        <span id="agreement_hint">Komisyon (%)</span>
+        <span id="agreement_hint">Commission (%)</span>
         <input type="number" name="agreement_value" step="0.01" min="0" required>
       </label>
-      <button type="submit">Ekle</button>
+      <button type="submit">Add</button>
     </form>
   </section>
 
   <section class="table-card">
     <table>
       <thead>
-        <tr><th>Mağaza</th><th>İletişim</th><th>Anlaşma</th><th></th></tr>
+        <tr><th>Store</th><th>Contact</th><th>Agreement</th><th></th></tr>
       </thead>
       <tbody>
         {% for s in stores %}
@@ -39,13 +39,13 @@
           <td>{{ s.contact or "-" }}</td>
           <td>{{ s.agreement_label }}</td>
           <td>
-            <form method="post" action="{{ url_for('delete_store', store_id=s.id) }}" onsubmit="return confirm('Silinsin mi?');">
-              <button type="submit" class="danger">Sil</button>
+            <form method="post" action="{{ url_for('delete_store', store_id=s.id) }}" onsubmit="return confirm('Delete this store?');">
+              <button type="submit" class="danger">Delete</button>
             </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="4">Henüz mağaza eklenmedi.</td></tr>
+        <tr><td colspan="4">No stores yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -55,7 +55,7 @@
     function toggleAgreementHint() {
       const type = document.getElementById("agreement_type").value;
       document.getElementById("agreement_hint").textContent =
-        type === "kira" ? "Aylık Kira (TL)" : "Komisyon (%)";
+        type === "rent" ? "Monthly Rent ($)" : "Commission (%)";
     }
   </script>
 {% endblock %}

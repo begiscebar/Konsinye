@@ -1,52 +1,52 @@
 {% extends "base.html" %}
-{% block title %}Panel · Konsinye Takip{% endblock %}
+{% block title %}Dashboard · Consignment Tracker{% endblock %}
 {% block content %}
-  <h1>Genel Bakış</h1>
+  <h1>Dashboard</h1>
 
   <section class="stat-grid">
     <div class="stat-card">
-      <span class="stat-label">Toplam Ciro</span>
-      <span class="stat-value">{{ "%.2f"|format(total_revenue) }} TL</span>
+      <span class="stat-label">Total Revenue</span>
+      <span class="stat-value">${{ "%.2f"|format(total_revenue) }}</span>
     </div>
     <div class="stat-card">
-      <span class="stat-label">Toplam Kâr</span>
-      <span class="stat-value">{{ "%.2f"|format(total_profit) }} TL</span>
+      <span class="stat-label">Total Profit</span>
+      <span class="stat-value">${{ "%.2f"|format(total_profit) }}</span>
     </div>
     <div class="stat-card">
-      <span class="stat-label">Satılan Ürün Adedi</span>
+      <span class="stat-label">Items Sold</span>
       <span class="stat-value">{{ total_items_sold }}</span>
     </div>
     <div class="stat-card">
-      <span class="stat-label">Mağazada Bekleyen Stok</span>
+      <span class="stat-label">Stock In Stores</span>
       <span class="stat-value">{{ active_stock }}</span>
     </div>
   </section>
 
   <section class="chart-grid">
     <div class="chart-card">
-      <h2>Duruma Göre Dağılım</h2>
+      <h2>Status Breakdown</h2>
       <canvas id="statusChart"></canvas>
     </div>
     <div class="chart-card">
-      <h2>Mağazaya Göre Ciro</h2>
+      <h2>Revenue by Store</h2>
       <canvas id="storeChart"></canvas>
     </div>
     <div class="chart-card">
-      <h2>Kategoriye Göre Satış Adedi</h2>
+      <h2>Items Sold by Category</h2>
       <canvas id="categoryChart"></canvas>
     </div>
     <div class="chart-card">
-      <h2>Aylık Ciro</h2>
+      <h2>Monthly Revenue</h2>
       <canvas id="monthChart"></canvas>
     </div>
   </section>
 
   <section class="table-card">
-    <h2>Son Hareketler</h2>
+    <h2>Recent Activity</h2>
     <table>
       <thead>
         <tr>
-          <th>Ürün</th><th>Mağaza</th><th>Adet</th><th>Durum</th><th>Tarih</th>
+          <th>Product</th><th>Store</th><th>Qty</th><th>Status</th><th>Date</th>
         </tr>
       </thead>
       <tbody>
@@ -56,10 +56,10 @@
           <td>{{ c.store.name }}</td>
           <td>{{ c.quantity }}</td>
           <td><span class="badge status-{{ c.status }}">{{ c.status_label }}</span></td>
-          <td>{{ c.date_sent.strftime("%d.%m.%Y") }}</td>
+          <td>{{ c.date_sent.strftime("%b %d, %Y") }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="5">Henüz kayıt yok.</td></tr>
+        <tr><td colspan="5">No records yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -81,7 +81,7 @@
       type: "bar",
       data: {
         labels: {{ store_labels|tojson }},
-        datasets: [{ label: "Ciro (TL)", data: {{ store_values|tojson }}, backgroundColor: "#7bafd4" }]
+        datasets: [{ label: "Revenue ($)", data: {{ store_values|tojson }}, backgroundColor: "#7bafd4" }]
       },
       options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
     });
@@ -98,7 +98,7 @@
       type: "line",
       data: {
         labels: {{ month_labels|tojson }},
-        datasets: [{ label: "Ciro (TL)", data: {{ month_values|tojson }}, borderColor: "#c084a8", backgroundColor: "#c084a833", fill: true, tension: 0.3 }]
+        datasets: [{ label: "Revenue ($)", data: {{ month_values|tojson }}, borderColor: "#c084a8", backgroundColor: "#c084a833", fill: true, tension: 0.3 }]
       },
       options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
     });
