@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Ürünler · Konsinye Takip{% endblock %}
+{% block content %}
+  <h1>Ürünler</h1>
+
+  <section class="form-card">
+    <h2>Yeni Ürün Ekle</h2>
+    <form method="post" action="{{ url_for('add_product') }}" class="inline-form">
+      <label>Ürün Adı
+        <input type="text" name="name" required placeholder="Örn. İnci Kolye">
+      </label>
+      <label>Kategori
+        <select name="category">
+          {% for cat in categories %}
+          <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Maliyet (TL)
+        <input type="number" name="cost_price" step="0.01" min="0" required>
+      </label>
+      <button type="submit">Ekle</button>
+    </form>
+  </section>
+
+  <section class="table-card">
+    <table>
+      <thead>
+        <tr><th>Ürün</th><th>Kategori</th><th>Maliyet</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td>{{ p.name }}</td>
+          <td>{{ p.category }}</td>
+          <td>{{ "%.2f"|format(p.cost_price) }} TL</td>
+          <td>
+            <form method="post" action="{{ url_for('delete_product', product_id=p.id) }}" onsubmit="return confirm('Silinsin mi?');">
+              <button type="submit" class="danger">Sil</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4">Henüz ürün eklenmedi.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

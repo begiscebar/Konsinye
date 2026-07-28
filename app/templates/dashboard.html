@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Panel · Konsinye Takip{% endblock %}
+{% block content %}
+  <h1>Genel Bakış</h1>
+
+  <section class="stat-grid">
+    <div class="stat-card">
+      <span class="stat-label">Toplam Ciro</span>
+      <span class="stat-value">{{ "%.2f"|format(total_revenue) }} TL</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Toplam Kâr</span>
+      <span class="stat-value">{{ "%.2f"|format(total_profit) }} TL</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Satılan Ürün Adedi</span>
+      <span class="stat-value">{{ total_items_sold }}</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Mağazada Bekleyen Stok</span>
+      <span class="stat-value">{{ active_stock }}</span>
+    </div>
+  </section>
+
+  <section class="chart-grid">
+    <div class="chart-card">
+      <h2>Duruma Göre Dağılım</h2>
+      <canvas id="statusChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Mağazaya Göre Ciro</h2>
+      <canvas id="storeChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Kategoriye Göre Satış Adedi</h2>
+      <canvas id="categoryChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Aylık Ciro</h2>
+      <canvas id="monthChart"></canvas>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <h2>Son Hareketler</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Ürün</th><th>Mağaza</th><th>Adet</th><th>Durum</th><th>Tarih</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in recent %}
+        <tr>
+          <td>{{ c.product.name }}</td>
+          <td>{{ c.store.name }}</td>
+          <td>{{ c.quantity }}</td>
+          <td><span class="badge status-{{ c.status }}">{{ c.status_label }}</span></td>
+          <td>{{ c.date_sent.strftime("%d.%m.%Y") }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">Henüz kayıt yok.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
+  <script>
+    const palette = ["#c084a8", "#7bafd4", "#f2b880", "#8fbf8f", "#d68fd6", "#e2a8a8"];
+
+    new Chart(document.getElementById("statusChart"), {
+      type: "doughnut",
+      data: {
+        labels: {{ status_labels|tojson }},
+        datasets: [{ data: {{ status_values|tojson }}, backgroundColor: palette }]
+      }
+    });
+
+    new Chart(document.getElementById("storeChart"), {
+      type: "bar",
+      data: {
+        labels: {{ store_labels|tojson }},
+        datasets: [{ label: "Ciro (TL)", data: {{ store_values|tojson }}, backgroundColor: "#7bafd4" }]
+      },
+      options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+    });
+
+    new Chart(document.getElementById("categoryChart"), {
+      type: "pie",
+      data: {
+        labels: {{ category_labels|tojson }},
+        datasets: [{ data: {{ category_values|tojson }}, backgroundColor: palette }]
+      }
+    });
+
+    new Chart(document.getElementById("monthChart"), {
+      type: "line",
+      data: {
+        labels: {{ month_labels|tojson }},
+        datasets: [{ label: "Ciro (TL)", data: {{ month_values|tojson }}, borderColor: "#c084a8", backgroundColor: "#c084a833", fill: true, tension: 0.3 }]
+      },
+      options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+    });
+  </script>
+{% endblock %}

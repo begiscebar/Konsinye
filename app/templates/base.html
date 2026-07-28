@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Konsinye Takip{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">💎 Konsinye Takip</div>
+    <nav>
+      <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Panel</a>
+      <a href="{{ url_for('products') }}" class="{{ 'active' if request.endpoint == 'products' }}">Ürünler</a>
+      <a href="{{ url_for('stores') }}" class="{{ 'active' if request.endpoint == 'stores' }}">Mağazalar</a>
+      <a href="{{ url_for('consignments') }}" class="{{ 'active' if request.endpoint == 'consignments' }}">Konsinyeler</a>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
