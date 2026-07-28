@@ -2,7 +2,7 @@ import os
 from collections import OrderedDict
 from datetime import date
 
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, send_from_directory, url_for
 
 from models import (
     AGREEMENT_TYPES,
@@ -34,6 +34,12 @@ def create_app():
 
 
 def register_routes(app):
+    @app.route("/sw.js")
+    def service_worker():
+        response = send_from_directory(app.static_folder, "sw.js")
+        response.headers["Service-Worker-Allowed"] = "/"
+        return response
+
     @app.route("/")
     def dashboard():
         consignments = Consignment.query.all()

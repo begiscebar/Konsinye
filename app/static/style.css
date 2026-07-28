@@ -21,6 +21,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   padding: 1rem 2rem;
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -29,15 +31,22 @@ body {
 .brand {
   font-weight: 700;
   font-size: 1.2rem;
+  white-space: nowrap;
+}
+
+.topbar nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
 }
 
 .topbar nav a {
-  margin-left: 1.5rem;
   text-decoration: none;
   color: var(--muted);
   font-weight: 600;
   padding-bottom: 4px;
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
 }
 
 .topbar nav a.active, .topbar nav a:hover {
@@ -164,3 +173,18 @@ button.danger { background: #d47b7b; }
   border: 1px solid var(--border);
 }
 .filter-bar a.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.table-card {
+  overflow-x: auto;
+}
+
+.table-card table {
+  min-width: 480px;
+}
+
+@media (max-width: 480px) {
+  .topbar { padding: 0.8rem 1rem; }
+  .container { padding: 1rem; }
+  .stat-value { font-size: 1.3rem; }
+  .inline-form input, .inline-form select { min-width: 0; width: 100%; }
+}
