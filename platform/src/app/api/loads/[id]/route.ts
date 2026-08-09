@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireSession, handleApiError, isSuperAdmin, ForbiddenError } from "@/lib/rbac";
+import { scopeFinancialsForRole } from "@/lib/commission";
 
 async function canView(loadId: string, user: Awaited<ReturnType<typeof requireSession>>) {
   const load = await prisma.load.findUnique({
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const { load, allowed } = await canView(params.id, user);
     if (!load) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (!allowed) throw new ForbiddenError("You cannot view this load");
-    return NextResponse.json({ load });
+    return NextResponse.json({ load: { ...load, financials: scopeFinancialsForRole(load.financials, user.role) } });
   } catch (err) {
     return handleApiError(err);
   }

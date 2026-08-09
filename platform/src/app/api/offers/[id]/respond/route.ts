@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleApiError, ForbiddenError } from "@/lib/rbac";
+import { requireRole, handleApiError, ForbiddenError, ConflictError } from "@/lib/rbac";
 import { assertValidTransition } from "@/lib/loadStateMachine";
 import { logAudit } from "@/lib/audit";
 import { notifyUser } from "@/lib/integrations/notify";
@@ -27,29 +27,49 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (offer.status !== "PENDING") {
       return NextResponse.json({ error: `Offer already ${offer.status.toLowerCase()}` }, { status: 409 });
     }
+    if (offer.expiresAt && offer.expiresAt < new Date()) {
+      // Lazily flip it to EXPIRED so it stops showing as actionable, then refuse.
+      await prisma.loadOffer.updateMany({ where: { id: offer.id, status: "PENDING" }, data: { status: "EXPIRED" } });
+      return NextResponse.json({ error: "This offer has expired" }, { status: 409 });
+    }
 
     const targetLoadStatus = parsed.data.decision === "ACCEPT" ? "ACCEPTED" : "REJECTED";
     assertValidTransition(offer.load.status, targetLoadStatus, user.role);
 
-    await prisma.$transaction([
-      prisma.loadOffer.update({
-        where: { id: offer.id },
+    // Atomic, race-safe accept/reject: the WHERE clauses on both updateMany
+    // calls only match if this offer is still PENDING and the load is still
+    // OFFERED. If two requests race (two staff clicking Accept at once, or
+    // an accept racing a reject), only the first writer's updateMany affects
+    // any rows — the second gets count === 0 and is turned into a 409
+    // instead of silently double-applying (e.g. double-setting
+    // carrierCompanyId, or accepting an offer already rejected elsewhere).
+    await prisma.$transaction(async (tx) => {
+      const offerUpdate = await tx.loadOffer.updateMany({
+        where: { id: offer.id, status: "PENDING" },
         data: {
           status: parsed.data.decision === "ACCEPT" ? "ACCEPTED" : "REJECTED",
           respondedAt: new Date(),
         },
-      }),
-      prisma.load.update({
-        where: { id: offer.loadId },
+      });
+      if (offerUpdate.count === 0) {
+        throw new ConflictError("This offer was already responded to");
+      }
+
+      const loadUpdate = await tx.load.updateMany({
+        where: { id: offer.loadId, status: offer.load.status },
         data: {
           status: targetLoadStatus,
           carrierCompanyId: parsed.data.decision === "ACCEPT" ? offer.offeredToCompanyId : null,
         },
-      }),
-      prisma.loadStatusEvent.create({
+      });
+      if (loadUpdate.count === 0) {
+        throw new ConflictError("This load is no longer in an offered state");
+      }
+
+      await tx.loadStatusEvent.create({
         data: { loadId: offer.loadId, status: targetLoadStatus, changedByUserId: user.id },
-      }),
-    ]);
+      });
+    });
 
     await logAudit({
       actorUserId: user.id,

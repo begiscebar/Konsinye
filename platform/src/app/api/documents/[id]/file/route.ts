@@ -36,10 +36,18 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     }
 
     const bytes = await getStorageProvider().read(doc.fileUrl);
+    // Force a download (never "inline") and disable MIME-sniffing: a
+    // malicious upload (e.g. an .html/.svg file containing a <script>) must
+    // never be renderable in the browser under this same-origin API route,
+    // or it becomes stored XSS against whoever opens the "document".
+    // The filename is user-supplied at upload time, so it's stripped of
+    // quote/control characters before going into the header value.
+    const safeFileName = doc.fileName.replace(/[\r\n"]/g, "_");
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "application/octet-stream",
-        "Content-Disposition": `inline; filename="${doc.fileName}"`,
+        "Content-Disposition": `attachment; filename="${safeFileName}"`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (err) {

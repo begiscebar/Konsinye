@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { CommissionRule } from "@prisma/client";
+import type { CommissionRule, LoadFinancials, UserRole } from "@prisma/client";
 
 export interface FinancialBreakdown {
   grossRevenue: number;
@@ -69,4 +69,38 @@ export async function computeLoadFinancials(input: {
     carrierPayment: netAmount,
     netAmount,
   };
+}
+
+/**
+ * The full LoadFinancials row includes the platform's and dispatcher's cut
+ * of every load, which is internal-operator information — a broker (the
+ * customer paying for the load) should see what they're being charged and
+ * whether it's been paid, not how the platform splits its own margin with
+ * the dispatcher/carrier. The UI already only renders the broker-safe
+ * subset, but authorization has to hold at the API layer too: a broker
+ * opening devtools must not find the full breakdown in the JSON response
+ * just because the UI chose not to render it.
+ */
+export function scopeFinancialsForRole<T extends LoadFinancials | null>(
+  financials: T,
+  role: UserRole
+): T extends null ? null : Partial<LoadFinancials> {
+  if (!financials) return null as any;
+  // Brokers see what they're charged and whether it's paid, not the
+  // platform/dispatcher margin split. Drivers have no product surface for
+  // financials at all today (DriverLoadDetail never renders them) — same
+  // redaction applies so the API doesn't leak more than the UI shows.
+  if (role === "BROKER" || role === "DRIVER") {
+    return {
+      id: financials.id,
+      loadId: financials.loadId,
+      grossRevenue: financials.grossRevenue,
+      invoiceStatus: financials.invoiceStatus,
+      paymentDate: financials.paymentDate,
+      transactionId: financials.transactionId,
+      createdAt: financials.createdAt,
+      updatedAt: financials.updatedAt,
+    } as any;
+  }
+  return financials as any;
 }

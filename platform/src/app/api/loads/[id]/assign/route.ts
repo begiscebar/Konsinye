@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleApiError, ForbiddenError } from "@/lib/rbac";
+import { requireRole, handleApiError, ForbiddenError, ConflictError } from "@/lib/rbac";
 import { assertValidTransition } from "@/lib/loadStateMachine";
 import { logAudit } from "@/lib/audit";
 import { notifyUser } from "@/lib/integrations/notify";
@@ -36,17 +36,49 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!driver || driver.user.companyId !== load.carrierCompanyId) {
       return NextResponse.json({ error: "Driver does not belong to this company" }, { status: 400 });
     }
+    if (truck.status !== "AVAILABLE") {
+      return NextResponse.json({ error: "This truck is already on another load" }, { status: 409 });
+    }
+    if (!driver.available) {
+      return NextResponse.json({ error: "This driver is already on another load" }, { status: 409 });
+    }
 
-    await prisma.$transaction([
-      prisma.load.update({
-        where: { id: load.id },
+    // Atomically claim the load, the truck and the driver together: every
+    // updateMany below is guarded by the "still available/still in this
+    // state" condition it just checked above, so two truck owners assigning
+    // the same truck (or the same driver) to two different loads at the
+    // same time can't both win — the loser's updateMany affects 0 rows and
+    // the whole transaction is rolled back with a 409, instead of silently
+    // double-booking the truck/driver across two active loads.
+    await prisma.$transaction(async (tx) => {
+      const loadClaim = await tx.load.updateMany({
+        where: { id: load.id, status: load.status },
         data: { status: "ASSIGNED", truckId: truck.id, driverProfileId: driver.id },
-      }),
-      prisma.truck.update({ where: { id: truck.id }, data: { status: "ON_LOAD" } }),
-      prisma.loadStatusEvent.create({
+      });
+      if (loadClaim.count === 0) {
+        throw new ConflictError("This load is no longer in an accepted state");
+      }
+
+      const truckClaim = await tx.truck.updateMany({
+        where: { id: truck.id, status: "AVAILABLE" },
+        data: { status: "ON_LOAD" },
+      });
+      if (truckClaim.count === 0) {
+        throw new ConflictError("This truck was just assigned to another load");
+      }
+
+      const driverClaim = await tx.driverProfile.updateMany({
+        where: { id: driver.id, available: true },
+        data: { available: false },
+      });
+      if (driverClaim.count === 0) {
+        throw new ConflictError("This driver was just assigned to another load");
+      }
+
+      await tx.loadStatusEvent.create({
         data: { loadId: load.id, status: "ASSIGNED", changedByUserId: user.id },
-      }),
-    ]);
+      });
+    });
 
     await logAudit({
       actorUserId: user.id,

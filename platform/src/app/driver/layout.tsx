@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireDashboardAccess } from "@/lib/auth";
 import { DashboardShell } from "@/components/DashboardShell";
 
 const NAV = [
@@ -8,9 +7,7 @@ const NAV = [
 ];
 
 export default async function DriverLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-  if (session.user.role !== "DRIVER" && session.user.role !== "SUPER_ADMIN") redirect("/");
+  await requireDashboardAccess(["DRIVER"]);
 
   return (
     <DashboardShell navItems={NAV} roleLabel="Driver">

@@ -47,7 +47,11 @@ export const STATUS_SET_BY_ROLE: Partial<Record<LoadStatus, UserRole[]>> = {
 export class InvalidTransitionError extends Error {}
 
 export function assertValidTransition(current: LoadStatus, target: LoadStatus, role: UserRole) {
-  if (current === target) return;
+  // No same-status shortcut: re-submitting the current status must be
+  // rejected, not silently accepted, because several targets (PAID,
+  // COMPLETED) have side effects (payment timestamps, commission
+  // recomputation) that must never re-run, and a same-status no-op would
+  // otherwise skip the STATUS_SET_BY_ROLE check below entirely.
   const allowedNext = LOAD_TRANSITIONS[current] ?? [];
   if (!allowedNext.includes(target)) {
     throw new InvalidTransitionError(`Cannot move a load from ${current} to ${target}`);

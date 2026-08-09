@@ -4,8 +4,12 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireRole, handleApiError, isSuperAdmin } from "@/lib/rbac";
 import { generateLoadNumber } from "@/lib/loadNumber";
+import { scopeFinancialsForRole } from "@/lib/commission";
 import { logAudit } from "@/lib/audit";
+import { LOAD_TRANSITIONS } from "@/lib/loadStateMachine";
 import type { Prisma } from "@prisma/client";
+
+const LOAD_STATUS_VALUES = Object.keys(LOAD_TRANSITIONS);
 
 // Treats "" (an empty optional form field) the same as an absent field,
 // instead of z.coerce.number() turning "" into 0 and failing .positive().
@@ -18,17 +22,19 @@ const optionalPositiveInt = z.preprocess(
   z.coerce.number().int().positive().optional()
 );
 
+const EQUIPMENT_TYPE_VALUES = [
+  "BOX_TRUCK_26FT",
+  "NON_CDL_BOX_TRUCK",
+  "CDL_BOX_TRUCK",
+  "SEMI_DRY_VAN",
+  "SEMI_REEFER",
+  "SEMI_FLATBED",
+  "SPRINTER_VAN",
+  "OTHER",
+] as const;
+
 const createSchema = z.object({
-  equipmentType: z.enum([
-    "BOX_TRUCK_26FT",
-    "NON_CDL_BOX_TRUCK",
-    "CDL_BOX_TRUCK",
-    "SEMI_DRY_VAN",
-    "SEMI_REEFER",
-    "SEMI_FLATBED",
-    "SPRINTER_VAN",
-    "OTHER",
-  ]),
+  equipmentType: z.enum(EQUIPMENT_TYPE_VALUES),
   pickupLocation: z.string().min(1),
   pickupAddress: z.string().min(1),
   pickupCity: z.string().min(1),
@@ -78,9 +84,19 @@ export async function GET(req: NextRequest) {
     }
 
     const status = sp.get("status");
-    if (status) where.status = status as any;
+    if (status) {
+      if (!LOAD_STATUS_VALUES.includes(status as any)) {
+        return NextResponse.json({ error: `Invalid status filter: ${status}` }, { status: 400 });
+      }
+      where.status = status as any;
+    }
     const equipmentType = sp.get("equipmentType");
-    if (equipmentType) where.equipmentType = equipmentType as any;
+    if (equipmentType) {
+      if (!EQUIPMENT_TYPE_VALUES.includes(equipmentType as any)) {
+        return NextResponse.json({ error: `Invalid equipmentType filter: ${equipmentType}` }, { status: 400 });
+      }
+      where.equipmentType = equipmentType as any;
+    }
     const originState = sp.get("originState");
     if (originState) where.pickupState = originState.toUpperCase();
     const destState = sp.get("destState");
@@ -103,7 +119,9 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ loads });
+    const scoped = loads.map((l) => ({ ...l, financials: scopeFinancialsForRole(l.financials, user.role) }));
+
+    return NextResponse.json({ loads: scoped });
   } catch (err) {
     return handleApiError(err);
   }

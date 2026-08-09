@@ -1,8 +1,12 @@
 import type { Session } from "next-auth";
 import { NextResponse } from "next/server";
+import { InvalidTransitionError } from "@/lib/loadStateMachine";
 
 export class ForbiddenError extends Error {}
 export class UnauthorizedError extends Error {}
+/** Thrown when a concurrent/stale write loses a race (e.g. an offer already
+ * resolved, a truck/driver already booked). Maps to HTTP 409. */
+export class ConflictError extends Error {}
 
 /** Throws if there is no session, or the session's role isn't in `roles`. */
 export function requireRole(session: Session | null, roles: Session["user"]["role"][]) {
@@ -39,6 +43,12 @@ export function handleApiError(err: unknown) {
   }
   if (err instanceof ForbiddenError) {
     return NextResponse.json({ error: err.message }, { status: 403 });
+  }
+  if (err instanceof ConflictError) {
+    return NextResponse.json({ error: err.message }, { status: 409 });
+  }
+  if (err instanceof InvalidTransitionError) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
   }
   console.error(err);
   return NextResponse.json({ error: "Internal server error" }, { status: 500 });

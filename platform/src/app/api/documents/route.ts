@@ -7,14 +7,22 @@ import { logAudit } from "@/lib/audit";
 import { notifyUser } from "@/lib/integrations/notify";
 import type { DocumentOwnerType } from "@prisma/client";
 
-async function assertCanUpload(
+/**
+ * Authorizes read AND write access to documents for a given (ownerType,
+ * ownerId) pair. Used by both GET (list) and POST (upload) — the same rule
+ * decides who may see a company/truck/load/user's documents and who may add
+ * to them. Never trust ownerId from the client without this check: every
+ * caller of this function (and this function alone) is what stands between
+ * a document list request and another tenant's CDLs/COIs/PODs.
+ */
+async function assertCanAccessDocumentsFor(
   user: Awaited<ReturnType<typeof requireSession>>,
   ownerType: DocumentOwnerType,
   ownerId: string
 ) {
   if (isSuperAdmin(user)) return;
   if (ownerType === "USER") {
-    if (ownerId !== user.id) throw new ForbiddenError("Can only upload your own documents");
+    if (ownerId !== user.id) throw new ForbiddenError("Can only access your own documents");
     return;
   }
   if (ownerType === "COMPANY") {
@@ -37,7 +45,9 @@ async function assertCanUpload(
       where: { userId: user.id, loadsAsDriver: { some: { id: ownerId } } },
     });
     if (!onLoad && !driverOnLoad) throw new ForbiddenError("Not associated with this load");
+    return;
   }
+  throw new ForbiddenError("Unrecognized document owner type");
 }
 
 export async function GET(req: NextRequest) {
@@ -49,13 +59,23 @@ export async function GET(req: NextRequest) {
     const ownerId = sp.get("ownerId");
 
     const where: any = {};
-    if (ownerType) where.ownerType = ownerType;
-    if (ownerId) {
+    if (ownerType && ownerId) {
+      // Both present: authorize this specific (ownerType, ownerId) pair —
+      // this is the only path that may return another tenant's data, so it
+      // must never be reachable without the check succeeding first.
+      await assertCanAccessDocumentsFor(user, ownerType, ownerId);
+      where.ownerType = ownerType;
       if (ownerType === "USER") where.ownerUserId = ownerId;
       if (ownerType === "COMPANY") where.ownerCompanyId = ownerId;
       if (ownerType === "TRUCK") where.ownerTruckId = ownerId;
       if (ownerType === "LOAD") where.ownerLoadId = ownerId;
+    } else if (ownerType || ownerId) {
+      // A partial filter (one without the other) can't be authorized against
+      // a specific owner, and must never fall through to an unscoped query.
+      return NextResponse.json({ error: "ownerType and ownerId must be provided together" }, { status: 400 });
     } else if (!isSuperAdmin(user)) {
+      // No owner filter at all: default to "my company's documents" rather
+      // than every document in the system.
       where.ownerCompanyId = user.companyId ?? "__none__";
     }
 
@@ -85,11 +105,14 @@ export async function POST(req: NextRequest) {
     if (!(file instanceof File) || !type || !ownerType || !ownerId) {
       return NextResponse.json({ error: "file, type, ownerType and ownerId are required" }, { status: 400 });
     }
+    if (file.size === 0) {
+      return NextResponse.json({ error: "File is empty" }, { status: 400 });
+    }
     if (file.size > 15 * 1024 * 1024) {
       return NextResponse.json({ error: "File too large (max 15MB)" }, { status: 400 });
     }
 
-    await assertCanUpload(user, ownerType, ownerId);
+    await assertCanAccessDocumentsFor(user, ownerType, ownerId);
 
     const buf = Buffer.from(await file.arrayBuffer());
     const { storageKey } = await getStorageProvider().save(file.name, buf);

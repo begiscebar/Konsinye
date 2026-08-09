@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth, hashPassword } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, safeUserSelect } from "@/lib/prisma";
 import { requireRole, handleApiError } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     const users = await prisma.user.findMany({
       where,
-      include: { company: { select: { name: true, type: true } } },
+      select: { ...safeUserSelect, company: { select: { name: true, type: true } } },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json({ users });
@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
         companyId: parsed.data.companyId,
         status: "ACTIVE",
       },
+      select: safeUserSelect,
     });
 
     await logAudit({ actorUserId: admin.id, action: "USER_CREATED", entityType: "User", entityId: user.id, metadata: { role: user.role } });

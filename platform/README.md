@@ -81,6 +81,38 @@ src/app/{admin,dispatcher,owner,driver,broker}/  # one dashboard per role
 src/components/            # shared UI (LoadBoard, LoadDetail, DocumentManager…)
 ```
 
+## Security
+
+This MVP went through a dedicated authorization/data-isolation/race-condition
+audit (server-side checks tested directly, not just UI hiding — full
+methodology and findings in the audit report). Highlights of what's
+enforced:
+
+- **Multi-tenant isolation** is checked on every list/detail/document
+  endpoint against the caller's `companyId` — including a fixed IDOR where
+  `GET /api/documents` could return another company's (or, if `ownerType`
+  was omitted, literally every company's) documents by manipulating query
+  params.
+- **Race conditions** in the load workflow are closed with atomic,
+  conditional DB writes (not read-then-write): two users can't both accept
+  the same offer, an offer can't be accepted after it expires, and a
+  truck/driver can't be double-booked onto two active loads even under
+  concurrent requests.
+- **Session freshness**: suspending a user takes effect on their very next
+  request, not after their existing JWT happens to expire.
+- **Rate limiting** on login (per-account) and registration (per-IP) —
+  in-memory, single-instance only; swap in a shared store (Redis) before a
+  multi-instance production deployment.
+- Uploaded documents are always served as `attachment` with
+  `X-Content-Type-Options: nosniff` (never `inline`), so a malicious upload
+  can't execute as HTML/script in the app's origin.
+- `passwordHash` is never included in any API response (explicit `select`
+  everywhere a `User` is serialized).
+
+Known residual risks and what's still needed before real users/money touch
+this: see the audit report's "Remaining risks" and "Must-do before
+production" sections.
+
 ## Known follow-up: dependency advisories
 
 `npm audit` flags advisories in `next@14.2.x` (mostly DoS/SSRF edge cases in

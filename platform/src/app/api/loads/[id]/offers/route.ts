@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireRole, handleApiError } from "@/lib/rbac";
+import { requireRole, handleApiError, ConflictError } from "@/lib/rbac";
 import { assertValidTransition } from "@/lib/loadStateMachine";
 import { logAudit } from "@/lib/audit";
 import { notifyUser } from "@/lib/integrations/notify";
@@ -26,10 +26,30 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const load = await prisma.load.findUnique({ where: { id: params.id } });
     if (!load) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    // A load can only be offered while it's genuinely open — this both
+    // rejects re-offering a load that's already OFFERED/ACCEPTED/etc (no more
+    // "current === target" shortcut to lean on) and, combined with the
+    // atomic conditional update below, closes the race where two offers
+    // could be created for the same load before either write commits.
     assertValidTransition(load.status, "OFFERED", user.role);
 
-    const [offer] = await prisma.$transaction([
-      prisma.loadOffer.create({
+    const carrier = await prisma.company.findUnique({ where: { id: parsed.data.carrierCompanyId } });
+    if (!carrier || carrier.type !== "CARRIER" || carrier.status !== "APPROVED") {
+      return NextResponse.json(
+        { error: "carrierCompanyId must be an approved carrier company" },
+        { status: 400 }
+      );
+    }
+
+    const offer = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.load.updateMany({
+        where: { id: load.id, status: load.status },
+        data: { status: "OFFERED", dispatcherUserId: user.id },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictError("This load was already offered or is no longer available");
+      }
+      const created = await tx.loadOffer.create({
         data: {
           loadId: load.id,
           offeredToCompanyId: parsed.data.carrierCompanyId,
@@ -39,15 +59,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             ? new Date(Date.now() + parsed.data.expiresInHours * 60 * 60 * 1000)
             : null,
         },
-      }),
-      prisma.load.update({
-        where: { id: load.id },
-        data: { status: "OFFERED", dispatcherUserId: user.id },
-      }),
-      prisma.loadStatusEvent.create({
+      });
+      await tx.loadStatusEvent.create({
         data: { loadId: load.id, status: "OFFERED", changedByUserId: user.id },
-      }),
-    ]);
+      });
+      return created;
+    });
 
     await logAudit({
       actorUserId: user.id,

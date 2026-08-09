@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth, hashPassword } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma, safeUserSelect } from "@/lib/prisma";
 import { requireRole, requireSession, handleApiError, isSuperAdmin } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
           },
         },
       },
-      include: { driverProfile: true },
+      select: { ...safeUserSelect, driverProfile: true },
     });
 
     await logAudit({ actorUserId: user.id, action: "DRIVER_CREATED", entityType: "User", entityId: driverUser.id });

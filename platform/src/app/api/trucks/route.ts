@@ -5,12 +5,15 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, requireSession, handleApiError, companyScope } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 
+const EQUIPMENT_TYPE_VALUES = [
+  "BOX_TRUCK_26FT", "NON_CDL_BOX_TRUCK", "CDL_BOX_TRUCK",
+  "SEMI_DRY_VAN", "SEMI_REEFER", "SEMI_FLATBED", "SPRINTER_VAN", "OTHER",
+] as const;
+const TRUCK_STATUS_VALUES = ["AVAILABLE", "ON_LOAD", "MAINTENANCE", "INACTIVE"] as const;
+
 const createSchema = z.object({
   unitNumber: z.string().min(1),
-  equipmentType: z.enum([
-    "BOX_TRUCK_26FT", "NON_CDL_BOX_TRUCK", "CDL_BOX_TRUCK",
-    "SEMI_DRY_VAN", "SEMI_REEFER", "SEMI_FLATBED", "SPRINTER_VAN", "OTHER",
-  ]),
+  equipmentType: z.enum(EQUIPMENT_TYPE_VALUES),
   vin: z.string().optional(),
   plate: z.string().optional(),
   maxWeightLbs: z.coerce.number().int().positive().optional(),
@@ -26,9 +29,19 @@ export async function GET(req: NextRequest) {
 
     const where: any = { ...companyScope(user) };
     const status = sp.get("status");
-    if (status) where.status = status;
+    if (status) {
+      if (!TRUCK_STATUS_VALUES.includes(status as any)) {
+        return NextResponse.json({ error: `Invalid status filter: ${status}` }, { status: 400 });
+      }
+      where.status = status;
+    }
     const equipmentType = sp.get("equipmentType");
-    if (equipmentType) where.equipmentType = equipmentType;
+    if (equipmentType) {
+      if (!EQUIPMENT_TYPE_VALUES.includes(equipmentType as any)) {
+        return NextResponse.json({ error: `Invalid equipmentType filter: ${equipmentType}` }, { status: 400 });
+      }
+      where.equipmentType = equipmentType;
+    }
 
     const trucks = await prisma.truck.findMany({
       where,

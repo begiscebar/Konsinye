@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireSession, handleApiError, ForbiddenError, isSuperAdmin } from "@/lib/rbac";
+import { requireSession, handleApiError, ForbiddenError, ConflictError, isSuperAdmin } from "@/lib/rbac";
 import { assertValidTransition, STATUSES_REQUIRING_DEDICATED_ENDPOINT } from "@/lib/loadStateMachine";
 import { computeLoadFinancials } from "@/lib/commission";
 import { logAudit } from "@/lib/audit";
@@ -57,8 +57,36 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
     assertValidTransition(load.status, target, user.role);
 
+    // POD_UPLOADED is a claim that proof of delivery exists — don't let it
+    // be set (and therefore don't let a load reach COMPLETED, which
+    // requires passing through POD_UPLOADED first) without an actual POD
+    // document on file for this load.
+    if (target === "POD_UPLOADED") {
+      const pod = await prisma.document.findFirst({
+        where: { ownerType: "LOAD", ownerLoadId: load.id, type: "POD" },
+      });
+      if (!pod) {
+        return NextResponse.json(
+          { error: "Upload a POD document for this load before marking it POD_UPLOADED" },
+          { status: 400 }
+        );
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
-      await tx.load.update({ where: { id: load.id }, data: { status: target } });
+      // Guarded by the load's status at read time so two concurrent
+      // transitions on the same load (e.g. a double-tap, or two tabs) can't
+      // both apply — the loser gets count === 0 and a 409 instead of
+      // silently re-running side effects like commission calc or the
+      // payment timestamp a second time.
+      const claim = await tx.load.updateMany({
+        where: { id: load.id, status: load.status },
+        data: { status: target },
+      });
+      if (claim.count === 0) {
+        throw new ConflictError("This load's status just changed — reload and try again");
+      }
+
       await tx.loadStatusEvent.create({
         data: { loadId: load.id, status: target, changedByUserId: user.id, note: parsed.data.note },
       });
@@ -76,6 +104,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         if (load.truckId) {
           await tx.truck.update({ where: { id: load.truckId }, data: { status: "AVAILABLE" } });
         }
+        if (load.driverProfileId) {
+          await tx.driverProfile.update({ where: { id: load.driverProfileId }, data: { available: true } });
+        }
       }
 
       if (target === "PAID") {
@@ -85,8 +116,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         });
       }
 
-      if (target === "CANCELLED" && load.truckId) {
-        await tx.truck.update({ where: { id: load.truckId }, data: { status: "AVAILABLE" } });
+      if (target === "CANCELLED") {
+        if (load.truckId) {
+          await tx.truck.update({ where: { id: load.truckId }, data: { status: "AVAILABLE" } });
+        }
+        if (load.driverProfileId) {
+          await tx.driverProfile.update({ where: { id: load.driverProfileId }, data: { available: true } });
+        }
       }
     });
 
