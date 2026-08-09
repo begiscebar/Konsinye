@@ -22,6 +22,14 @@ Driver Management + Broker Portal + Admin ERP + Communication System.**
 - MVP auth is email + password (NextAuth credentials, bcrypt, JWT sessions).
   Email verification / password reset are architected (fields + token table)
   but the actual email send is stubbed behind the notification interface.
+  Role/status are re-read from the database on every request (not trusted
+  from the JWT after sign-in), so suspending a user takes effect on their
+  very next request rather than waiting for their token to expire. Login is
+  rate-limited per account and registration per IP (in-memory — swap for a
+  shared store before a multi-instance deployment). This build went through
+  a dedicated pre-production security/authorization/multi-tenant-isolation
+  audit; see the root README's "Security" section for the full list of what
+  was found and fixed.
 
 ## 2. User Roles (RBAC)
 
@@ -58,7 +66,18 @@ Status transitions are enforced server-side by a state machine
 Admin) can move a load from `LOADED` to `IN_TRANSIT`; only a Truck Owner (or
 Admin) can move `OFFERED` → `ACCEPTED`. Every transition writes a
 `LoadStatusEvent` (the trip's audit trail / timeline) and a generic
-`AuditLog` row.
+`AuditLog` row. There is no same-status shortcut — resubmitting a load's
+current status is rejected like any other invalid transition, since several
+targets (`PAID`, `COMPLETED`) have side effects (payment timestamps,
+commission recomputation) that must never re-run.
+
+The offer/accept and truck+driver assignment steps are race-safe: each is
+an atomic, conditionally-guarded database write (`updateMany` gated on the
+row's expected prior state inside a transaction), not a read-then-write.
+Two concurrent accepts on the same offer, or two concurrent assignments
+racing for the same truck or driver, resolve to exactly one winner and a
+clean rejection for the loser — never a silent double-booking. `POD_UPLOADED`
+additionally requires an actual POD document to exist on the load first.
 
 ## 4. Smart Load Matching
 
