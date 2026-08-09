@@ -1,0 +1,527 @@
+// Konsinye Freight — core schema
+// Multi-tenant: every tenant-owned row carries companyId; access is
+// scoped in application code (src/lib/rbac.ts), Super Admin bypasses.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum UserRole {
+  SUPER_ADMIN
+  DISPATCHER
+  TRUCK_OWNER
+  DRIVER
+  BROKER
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum CompanyType {
+  ADMIN_ORG
+  CARRIER
+  DISPATCH_ORG
+  BROKER
+}
+
+enum CompanyStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+}
+
+enum EquipmentType {
+  BOX_TRUCK_26FT
+  NON_CDL_BOX_TRUCK
+  CDL_BOX_TRUCK
+  SEMI_DRY_VAN
+  SEMI_REEFER
+  SEMI_FLATBED
+  SPRINTER_VAN
+  OTHER
+}
+
+enum TruckStatus {
+  AVAILABLE
+  ON_LOAD
+  MAINTENANCE
+  INACTIVE
+}
+
+enum LoadStatus {
+  AVAILABLE
+  OFFERED
+  ACCEPTED
+  ASSIGNED
+  DRIVER_CONFIRMED
+  AT_PICKUP
+  LOADED
+  IN_TRANSIT
+  AT_DELIVERY
+  DELIVERED
+  POD_UPLOADED
+  COMPLETED
+  PAYMENT_PENDING
+  PAID
+  CANCELLED
+  REJECTED
+  DISPUTED
+  DELAYED
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum DocumentOwnerType {
+  USER
+  COMPANY
+  TRUCK
+  LOAD
+}
+
+enum DocumentType {
+  CDL
+  DRIVER_LICENSE
+  MEDICAL_CARD
+  INSURANCE_COI
+  W9
+  BOL
+  POD
+  RATE_CONFIRMATION
+  MC_AUTHORITY
+  USDOT_REGISTRATION
+  BOC3
+  UCR
+  VEHICLE_REGISTRATION
+  DRUG_ALCOHOL_COMPLIANCE
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum NotificationType {
+  LOAD_AVAILABLE
+  LOAD_OFFERED
+  LOAD_ACCEPTED
+  LOAD_REJECTED
+  DRIVER_ASSIGNED
+  PICKUP_APPROACHING
+  DELIVERY_APPROACHING
+  DELAY_REPORTED
+  DOCUMENT_EXPIRING
+  POD_UPLOADED
+  PAYMENT_RECEIVED
+  PAYMENT_PENDING
+  ADMIN_APPROVAL
+  COMPLIANCE_ISSUE
+  MESSAGE
+  SYSTEM
+}
+
+enum CommissionRuleType {
+  PERCENTAGE
+  FLAT_PER_LOAD
+  DISPATCH_FLAT_FEE
+  SUBSCRIPTION
+  MEMBERSHIP
+  BROKER_FEE
+}
+
+enum InvoiceStatus {
+  NOT_INVOICED
+  INVOICED
+  PAYMENT_PENDING
+  PAID
+  DISPUTED
+}
+
+// ---------- Core identity / tenancy ----------
+
+model Company {
+  id          String        @id @default(cuid())
+  name        String
+  type        CompanyType
+  status      CompanyStatus @default(PENDING)
+  mcNumber    String?
+  usdotNumber String?
+  phone       String?
+  email       String?
+  addressLine String?
+  city        String?
+  state       String?
+  zip         String?
+  minRate     Float? // $/mile floor, used by matching engine
+  preferredLanes   Json? // e.g. [{from:"TX",to:"CA"}]
+  preferredStates  Json? // e.g. ["TX","OK","NM"]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  users             User[]
+  trucks            Truck[]
+  documents         Document[]
+  commissionRules   CommissionRule[]
+  subscriptions     Subscription[]
+  complianceRecords ComplianceRequirement[] @relation("CompanyComplianceOverrides")
+
+  loadsAsBroker  Load[] @relation("BrokerCompanyLoads")
+  loadsAsCarrier Load[] @relation("CarrierCompanyLoads")
+
+  @@index([type])
+}
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  role          UserRole
+  status        UserStatus @default(PENDING)
+  companyId     String?
+  company       Company?   @relation(fields: [companyId], references: [id])
+  emailVerified DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  driverProfile DriverProfile?
+
+  documentsUploaded   Document[]        @relation("UploadedBy")
+  documentsReviewed   Document[]        @relation("ReviewedBy")
+  sentMessages        Message[]         @relation("SentMessages")
+  receivedMessages    Message[]         @relation("ReceivedMessages")
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  loadsCreated        Load[]            @relation("LoadCreatedBy")
+  loadsDispatched     Load[]            @relation("LoadDispatcher")
+  offersSent          LoadOffer[]       @relation("OfferSentBy")
+  loadStatusEvents    LoadStatusEvent[]
+  ratingsGiven        Rating[]          @relation("RatingsGiven")
+  ratingsReceived     Rating[]          @relation("RatingsReceived")
+
+  @@index([companyId])
+  @@index([role])
+}
+
+model DriverProfile {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id])
+  cdlNumber           String?
+  cdlState             String?
+  isCdlDriver         Boolean   @default(false)
+  medicalCardExpiry   DateTime?
+  homeCity            String?
+  homeState           String?
+  currentCity         String?
+  currentState         String?
+  available           Boolean   @default(true)
+  avgRating           Float?
+  onTimeDeliveryRate  Float? // 0-1
+  currentTruckId      String?   @unique
+  currentTruck        Truck?    @relation(fields: [currentTruckId], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  loadsAsDriver Load[] @relation("LoadDriver")
+}
+
+model Truck {
+  id               String        @id @default(cuid())
+  companyId        String
+  company          Company       @relation(fields: [companyId], references: [id])
+  unitNumber       String
+  equipmentType    EquipmentType
+  vin              String?
+  plate            String?
+  maxWeightLbs     Int?
+  status           TruckStatus   @default(AVAILABLE)
+  homeCity         String?
+  homeState        String?
+  currentCity      String?
+  currentState     String?
+  onTimeDeliveryRate Float? // 0-1, rolling
+  avgRating        Float?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  driver DriverProfile?
+  loads  Load[]
+  documents Document[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+// ---------- Loads ----------
+
+model Load {
+  id             String     @id @default(cuid())
+  loadNumber     String     @unique // human-readable, e.g. KF-100234
+  status         LoadStatus @default(AVAILABLE)
+  equipmentType  EquipmentType
+
+  brokerCompanyId  String
+  brokerCompany    Company  @relation("BrokerCompanyLoads", fields: [brokerCompanyId], references: [id])
+  createdByUserId  String
+  createdBy        User     @relation("LoadCreatedBy", fields: [createdByUserId], references: [id])
+
+  dispatcherUserId String?
+  dispatcher       User?    @relation("LoadDispatcher", fields: [dispatcherUserId], references: [id])
+
+  carrierCompanyId String?
+  carrierCompany   Company? @relation("CarrierCompanyLoads", fields: [carrierCompanyId], references: [id])
+
+  truckId  String?
+  truck    Truck?  @relation(fields: [truckId], references: [id])
+
+  driverProfileId String?
+  driver          DriverProfile? @relation("LoadDriver", fields: [driverProfileId], references: [id])
+
+  pickupLocation     String
+  pickupAddress      String
+  pickupCity         String
+  pickupState        String
+  pickupLat          Float?
+  pickupLng          Float?
+  pickupApptStart    DateTime
+  pickupApptEnd      DateTime?
+
+  deliveryLocation   String
+  deliveryAddress    String
+  deliveryCity       String
+  deliveryState      String
+  deliveryLat        Float?
+  deliveryLng         Float?
+  deliveryApptStart  DateTime
+  deliveryApptEnd    DateTime?
+
+  commodity          String
+  weightLbs          Int
+  dimensions         String?
+  pieces             Int?
+  rate               Float
+  miles              Float?
+  specialRequirements String?
+  notes              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers       LoadOffer[]
+  statusEvents LoadStatusEvent[]
+  documents    Document[]
+  messages     Message[]
+  financials   LoadFinancials?
+  ratings      Rating[]
+
+  @@index([status])
+  @@index([brokerCompanyId])
+  @@index([carrierCompanyId])
+  @@index([dispatcherUserId])
+  @@index([pickupState])
+  @@index([deliveryState])
+}
+
+model LoadOffer {
+  id               String      @id @default(cuid())
+  loadId           String
+  load             Load        @relation(fields: [loadId], references: [id])
+  offeredToCompanyId String
+  offeredByUserId  String
+  offeredBy        User        @relation("OfferSentBy", fields: [offeredByUserId], references: [id])
+  matchScore       Int?
+  status           OfferStatus @default(PENDING)
+  expiresAt        DateTime?
+  respondedAt      DateTime?
+  createdAt        DateTime    @default(now())
+
+  @@index([loadId])
+  @@index([offeredToCompanyId])
+}
+
+model LoadStatusEvent {
+  id            String     @id @default(cuid())
+  loadId        String
+  load          Load       @relation(fields: [loadId], references: [id])
+  status        LoadStatus
+  changedByUserId String
+  changedBy     User       @relation(fields: [changedByUserId], references: [id])
+  note          String?
+  createdAt     DateTime   @default(now())
+
+  @@index([loadId])
+}
+
+// ---------- Documents ----------
+
+model Document {
+  id             String            @id @default(cuid())
+  ownerType      DocumentOwnerType
+  ownerUserId    String?
+  ownerCompanyId String?
+  ownerCompany   Company?          @relation(fields: [ownerCompanyId], references: [id])
+  ownerTruckId   String?
+  ownerTruck     Truck?            @relation(fields: [ownerTruckId], references: [id])
+  ownerLoadId    String?
+  ownerLoad      Load?             @relation(fields: [ownerLoadId], references: [id])
+
+  type           DocumentType
+  fileName       String
+  fileUrl        String
+  uploadedByUserId String
+  uploadedBy     User              @relation("UploadedBy", fields: [uploadedByUserId], references: [id])
+  status         DocumentStatus    @default(PENDING_REVIEW)
+  reviewedByUserId String?
+  reviewedBy     User?             @relation("ReviewedBy", fields: [reviewedByUserId], references: [id])
+  expirationDate DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([ownerType, ownerUserId])
+  @@index([ownerCompanyId])
+  @@index([ownerTruckId])
+  @@index([ownerLoadId])
+  @@index([expirationDate])
+}
+
+model ComplianceRequirement {
+  id            String       @id @default(cuid())
+  name          String
+  documentType  DocumentType
+  appliesToCompanyType CompanyType?
+  appliesToEquipment   EquipmentType?
+  requiresCdl   Boolean?
+  interstate    Boolean?
+  active        Boolean      @default(true)
+  companyId     String? // null = platform-wide default
+  company       Company?     @relation("CompanyComplianceOverrides", fields: [companyId], references: [id])
+  createdAt     DateTime     @default(now())
+}
+
+// ---------- Communication ----------
+
+model Message {
+  id           String   @id @default(cuid())
+  loadId       String?
+  load         Load?    @relation(fields: [loadId], references: [id])
+  senderId     String
+  sender       User     @relation("SentMessages", fields: [senderId], references: [id])
+  recipientId  String?
+  recipient    User?    @relation("ReceivedMessages", fields: [recipientId], references: [id])
+  body         String
+  readAt       DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([loadId])
+  @@index([senderId])
+  @@index([recipientId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  type        NotificationType
+  title       String
+  body        String
+  relatedLoadId String?
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, readAt])
+}
+
+// ---------- Financials ----------
+
+model CommissionRule {
+  id        String             @id @default(cuid())
+  name      String
+  type      CommissionRuleType
+  value     Float // % as 0-100 for PERCENTAGE, $ for flat types
+  appliesToRole UserRole?
+  companyId String? // null = platform default
+  company   Company?           @relation(fields: [companyId], references: [id])
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+}
+
+model LoadFinancials {
+  id                   String        @id @default(cuid())
+  loadId               String        @unique
+  load                 Load          @relation(fields: [loadId], references: [id])
+  grossRevenue         Float
+  platformCommission   Float         @default(0)
+  dispatcherCommission Float         @default(0)
+  otherFees            Float         @default(0)
+  carrierPayment       Float         @default(0)
+  driverPayment        Float         @default(0)
+  netAmount            Float         @default(0)
+  invoiceStatus        InvoiceStatus @default(NOT_INVOICED)
+  paymentDate          DateTime?
+  transactionId        String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  plan      String
+  status    String   @default("ACTIVE")
+  startDate DateTime @default(now())
+  renewalDate DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ---------- Reputation / audit ----------
+
+model Rating {
+  id            String   @id @default(cuid())
+  loadId        String
+  load          Load     @relation(fields: [loadId], references: [id])
+  ratedByUserId String
+  ratedBy       User     @relation("RatingsGiven", fields: [ratedByUserId], references: [id])
+  ratedUserId   String
+  ratedUser     User     @relation("RatingsReceived", fields: [ratedUserId], references: [id])
+  score         Int // 1-5
+  comment       String?
+  createdAt     DateTime @default(now())
+
+  @@index([ratedUserId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorUserId String?
+  actor      User?    @relation(fields: [actorUserId], references: [id])
+  action     String // e.g. "LOAD_STATUS_CHANGED", "USER_SUSPENDED"
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+}
