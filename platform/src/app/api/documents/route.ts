@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireSession, handleApiError, isSuperAdmin, ForbiddenError } from "@/lib/rbac";
@@ -6,6 +7,19 @@ import { getStorageProvider } from "@/lib/integrations/storage";
 import { logAudit } from "@/lib/audit";
 import { notifyUser } from "@/lib/integrations/notify";
 import type { DocumentOwnerType } from "@prisma/client";
+
+const OWNER_TYPE_VALUES = ["USER", "COMPANY", "TRUCK", "LOAD"] as const;
+const DOCUMENT_TYPE_VALUES = [
+  "CDL", "DRIVER_LICENSE", "MEDICAL_CARD", "INSURANCE_COI", "W9", "BOL", "POD",
+  "RATE_CONFIRMATION", "MC_AUTHORITY", "USDOT_REGISTRATION", "BOC3", "UCR",
+  "VEHICLE_REGISTRATION", "DRUG_ALCOHOL_COMPLIANCE", "OTHER",
+] as const;
+const uploadFieldsSchema = z.object({
+  type: z.enum(DOCUMENT_TYPE_VALUES),
+  ownerType: z.enum(OWNER_TYPE_VALUES),
+  ownerId: z.string().min(1),
+  expirationDate: z.coerce.date().optional(),
+});
 
 /**
  * Authorizes read AND write access to documents for a given (ownerType,
@@ -97,13 +111,9 @@ export async function POST(req: NextRequest) {
 
     const form = await req.formData();
     const file = form.get("file");
-    const type = form.get("type") as string | null;
-    const ownerType = form.get("ownerType") as DocumentOwnerType | null;
-    const ownerId = form.get("ownerId") as string | null;
-    const expirationDate = form.get("expirationDate") as string | null;
 
-    if (!(file instanceof File) || !type || !ownerType || !ownerId) {
-      return NextResponse.json({ error: "file, type, ownerType and ownerId are required" }, { status: 400 });
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "file is required" }, { status: 400 });
     }
     if (file.size === 0) {
       return NextResponse.json({ error: "File is empty" }, { status: 400 });
@@ -111,6 +121,15 @@ export async function POST(req: NextRequest) {
     if (file.size > 15 * 1024 * 1024) {
       return NextResponse.json({ error: "File too large (max 15MB)" }, { status: 400 });
     }
+
+    const parsed = uploadFieldsSchema.safeParse({
+      type: form.get("type"),
+      ownerType: form.get("ownerType"),
+      ownerId: form.get("ownerId"),
+      expirationDate: form.get("expirationDate") || undefined,
+    });
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    const { type, ownerType, ownerId, expirationDate } = parsed.data;
 
     await assertCanAccessDocumentsFor(user, ownerType, ownerId);
 
@@ -124,11 +143,11 @@ export async function POST(req: NextRequest) {
         ownerCompanyId: ownerType === "COMPANY" ? ownerId : undefined,
         ownerTruckId: ownerType === "TRUCK" ? ownerId : undefined,
         ownerLoadId: ownerType === "LOAD" ? ownerId : undefined,
-        type: type as any,
+        type,
         fileName: file.name,
         fileUrl: storageKey,
         uploadedByUserId: user.id,
-        expirationDate: expirationDate ? new Date(expirationDate) : null,
+        expirationDate: expirationDate ?? null,
       },
     });
 

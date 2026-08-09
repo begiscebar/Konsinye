@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireSession, handleApiError, isSuperAdmin, ForbiddenError } from "@/lib/rbac";
 import { scopeFinancialsForRole } from "@/lib/commission";
+
+// Mirrors the constraints on these same fields in the POST /api/loads
+// create schema — editing a load must not be able to set a rate/miles the
+// create endpoint would have rejected outright.
+const patchSchema = z.object({
+  rate: z.coerce.number().positive().optional(),
+  miles: z.coerce.number().positive().optional(),
+  notes: z.string().optional(),
+  specialRequirements: z.string().optional(),
+});
 
 async function canView(loadId: string, user: Awaited<ReturnType<typeof requireSession>>) {
   const load = await prisma.load.findUnique({
@@ -60,12 +71,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       (user.role === "BROKER" && load.brokerCompanyId === user.companyId && load.status === "AVAILABLE");
     if (!allowed || !canEdit) throw new ForbiddenError("You cannot edit this load");
 
-    const body = await req.json().catch(() => ({}));
-    const allowedFields = ["rate", "notes", "specialRequirements", "miles"] as const;
-    const data: Record<string, unknown> = {};
-    for (const f of allowedFields) if (f in body) data[f] = body[f];
+    const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-    const updated = await prisma.load.update({ where: { id: params.id }, data });
+    const updated = await prisma.load.update({ where: { id: params.id }, data: parsed.data });
     return NextResponse.json({ load: updated });
   } catch (err) {
     return handleApiError(err);
