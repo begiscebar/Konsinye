@@ -1,45 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Konsinyeler · Konsinye Takip{% endblock %}
+{% block title %}Consignments · Consignment Tracker{% endblock %}
 {% block content %}
-  <h1>Konsinye Kayıtları</h1>
+  <h1>Consignment Records</h1>
 
   <section class="form-card">
-    <h2>Yeni Konsinye Kaydı</h2>
+    <h2>Add New Consignment</h2>
     {% if products and stores %}
     <form method="post" action="{{ url_for('add_consignment') }}" class="inline-form">
-      <label>Ürün
+      <label>Product
         <select name="product_id" required>
           {% for p in products %}
           <option value="{{ p.id }}">{{ p.name }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Mağaza
+      <label>Store
         <select name="store_id" required>
           {% for s in stores %}
           <option value="{{ s.id }}">{{ s.name }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Adet
+      <label>Quantity
         <input type="number" name="quantity" value="1" min="1" required>
       </label>
-      <label>Satış Fiyatı (TL)
+      <label>Sale Price ($)
         <input type="number" name="unit_sale_price" step="0.01" min="0" required>
       </label>
-      <label>Gönderim Tarihi
+      <label>Date Sent
         <input type="date" name="date_sent" value="{{ '' }}" required>
       </label>
-      <button type="submit">Ekle</button>
+      <button type="submit">Add</button>
     </form>
     {% else %}
-    <p>Kayıt eklemeden önce en az bir <a href="{{ url_for('products') }}">ürün</a> ve bir <a href="{{ url_for('stores') }}">mağaza</a> oluşturmalısınız.</p>
+    <p>You need at least one <a href="{{ url_for('products') }}">product</a> and one <a href="{{ url_for('stores') }}">store</a> before adding a consignment.</p>
     {% endif %}
   </section>
 
   <section class="table-card">
     <div class="filter-bar">
-      <a href="{{ url_for('consignments') }}" class="{{ 'active' if not status_filter }}">Tümü</a>
+      <a href="{{ url_for('consignments') }}" class="{{ 'active' if not status_filter }}">All</a>
       {% for s in statuses %}
       <a href="{{ url_for('consignments', status=s) }}" class="{{ 'active' if status_filter == s }}">{{ status_labels[s] }}</a>
       {% endfor %}
@@ -47,7 +47,7 @@
     <table>
       <thead>
         <tr>
-          <th>Ürün</th><th>Mağaza</th><th>Adet</th><th>Fiyat</th><th>Durum</th><th>Gönderim</th><th>İşlem</th><th></th>
+          <th>Product</th><th>Store</th><th>Qty</th><th>Price</th><th>Status</th><th>Sent</th><th>Action</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -56,35 +56,35 @@
           <td>{{ c.product.name }}</td>
           <td>{{ c.store.name }}</td>
           <td>{{ c.quantity }}</td>
-          <td>{{ "%.2f"|format(c.actual_sale_price or c.unit_sale_price) }} TL</td>
+          <td>${{ "%.2f"|format(c.actual_sale_price or c.unit_sale_price) }}</td>
           <td><span class="badge status-{{ c.status }}">{{ c.status_label }}</span></td>
-          <td>{{ c.date_sent.strftime("%d.%m.%Y") }}</td>
+          <td>{{ c.date_sent.strftime("%b %d, %Y") }}</td>
           <td>
-            {% if c.status == "beklemede" %}
+            {% if c.status == "pending" %}
             <form method="post" action="{{ url_for('update_status', item_id=c.id) }}" class="status-form">
-              <input type="hidden" name="status" value="satildi">
-              <input type="number" name="actual_sale_price" step="0.01" min="0" placeholder="Satış fiyatı">
-              <button type="submit">Satıldı</button>
+              <input type="hidden" name="status" value="sold">
+              <input type="number" name="actual_sale_price" step="0.01" min="0" placeholder="Sale price">
+              <button type="submit">Sold</button>
             </form>
             <form method="post" action="{{ url_for('update_status', item_id=c.id) }}">
-              <input type="hidden" name="status" value="iade">
-              <button type="submit" class="secondary">İade</button>
+              <input type="hidden" name="status" value="returned">
+              <button type="submit" class="secondary">Return</button>
             </form>
             {% else %}
             <form method="post" action="{{ url_for('update_status', item_id=c.id) }}">
-              <input type="hidden" name="status" value="beklemede">
-              <button type="submit" class="secondary">Geri Al</button>
+              <input type="hidden" name="status" value="pending">
+              <button type="submit" class="secondary">Revert</button>
             </form>
             {% endif %}
           </td>
           <td>
-            <form method="post" action="{{ url_for('delete_consignment', item_id=c.id) }}" onsubmit="return confirm('Silinsin mi?');">
-              <button type="submit" class="danger">Sil</button>
+            <form method="post" action="{{ url_for('delete_consignment', item_id=c.id) }}" onsubmit="return confirm('Delete this record?');">
+              <button type="submit" class="danger">Delete</button>
             </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8">Kayıt bulunamadı.</td></tr>
+        <tr><td colspan="8">No records found.</td></tr>
         {% endfor %}
       </tbody>
     </table>

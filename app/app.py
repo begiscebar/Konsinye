@@ -2,7 +2,7 @@ import os
 from collections import OrderedDict
 from datetime import date
 
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, send_from_directory, url_for
 
 from models import (
     AGREEMENT_TYPES,
@@ -34,16 +34,22 @@ def create_app():
 
 
 def register_routes(app):
+    @app.route("/sw.js")
+    def service_worker():
+        response = send_from_directory(app.static_folder, "sw.js")
+        response.headers["Service-Worker-Allowed"] = "/"
+        return response
+
     @app.route("/")
     def dashboard():
         consignments = Consignment.query.all()
-        sold = [c for c in consignments if c.status == "satildi"]
+        sold = [c for c in consignments if c.status == "sold"]
 
         total_revenue = sum(c.revenue for c in sold)
         total_profit = sum(c.profit for c in sold)
         total_items_sold = sum(c.quantity for c in sold)
         active_stock = sum(
-            c.quantity for c in consignments if c.status == "beklemede"
+            c.quantity for c in consignments if c.status == "pending"
         )
 
         status_counts = OrderedDict((s, 0) for s in STATUSES)
@@ -85,12 +91,12 @@ def register_routes(app):
             recent=sorted(consignments, key=lambda c: c.id, reverse=True)[:8],
         )
 
-    @app.route("/urunler")
+    @app.route("/products")
     def products():
         items = Product.query.order_by(Product.name).all()
         return render_template("products.html", products=items, categories=CATEGORIES)
 
-    @app.route("/urunler/ekle", methods=["POST"])
+    @app.route("/products/add", methods=["POST"])
     def add_product():
         product = Product(
             name=request.form["name"].strip(),
@@ -101,21 +107,21 @@ def register_routes(app):
         db.session.commit()
         return redirect(url_for("products"))
 
-    @app.route("/urunler/<int:product_id>/sil", methods=["POST"])
+    @app.route("/products/<int:product_id>/delete", methods=["POST"])
     def delete_product(product_id):
         product = Product.query.get_or_404(product_id)
         db.session.delete(product)
         db.session.commit()
         return redirect(url_for("products"))
 
-    @app.route("/magazalar")
+    @app.route("/stores")
     def stores():
         items = Store.query.order_by(Store.name).all()
         return render_template(
             "stores.html", stores=items, agreement_types=AGREEMENT_TYPES
         )
 
-    @app.route("/magazalar/ekle", methods=["POST"])
+    @app.route("/stores/add", methods=["POST"])
     def add_store():
         store = Store(
             name=request.form["name"].strip(),
@@ -127,14 +133,14 @@ def register_routes(app):
         db.session.commit()
         return redirect(url_for("stores"))
 
-    @app.route("/magazalar/<int:store_id>/sil", methods=["POST"])
+    @app.route("/stores/<int:store_id>/delete", methods=["POST"])
     def delete_store(store_id):
         store = Store.query.get_or_404(store_id)
         db.session.delete(store)
         db.session.commit()
         return redirect(url_for("stores"))
 
-    @app.route("/konsinyeler")
+    @app.route("/consignments")
     def consignments():
         status_filter = request.args.get("status", "")
         query = Consignment.query
@@ -151,7 +157,7 @@ def register_routes(app):
             status_filter=status_filter,
         )
 
-    @app.route("/konsinyeler/ekle", methods=["POST"])
+    @app.route("/consignments/add", methods=["POST"])
     def add_consignment():
         item = Consignment(
             product_id=int(request.form["product_id"]),
@@ -164,13 +170,13 @@ def register_routes(app):
         db.session.commit()
         return redirect(url_for("consignments"))
 
-    @app.route("/konsinyeler/<int:item_id>/durum", methods=["POST"])
+    @app.route("/consignments/<int:item_id>/status", methods=["POST"])
     def update_status(item_id):
         item = Consignment.query.get_or_404(item_id)
         item.status = request.form["status"]
-        if item.status in ("satildi", "iade"):
+        if item.status in ("sold", "returned"):
             item.date_resolved = date.today()
-            if item.status == "satildi":
+            if item.status == "sold":
                 actual_price = request.form.get("actual_sale_price")
                 item.actual_sale_price = (
                     float(actual_price) if actual_price else item.unit_sale_price
@@ -181,7 +187,7 @@ def register_routes(app):
         db.session.commit()
         return redirect(url_for("consignments"))
 
-    @app.route("/konsinyeler/<int:item_id>/sil", methods=["POST"])
+    @app.route("/consignments/<int:item_id>/delete", methods=["POST"])
     def delete_consignment(item_id):
         item = Consignment.query.get_or_404(item_id)
         db.session.delete(item)

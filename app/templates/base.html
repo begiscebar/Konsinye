@@ -1,23 +1,36 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Konsinye Takip{% endblock %}</title>
+  <title>{% block title %}Consignment Tracker{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <meta name="theme-color" content="#c084a8">
+  <link rel="icon" href="{{ url_for('static', filename='icon-192.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Consignment">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">💎 Konsinye Takip</div>
+    <div class="brand">💎 Consignment Tracker</div>
     <nav>
-      <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Panel</a>
-      <a href="{{ url_for('products') }}" class="{{ 'active' if request.endpoint == 'products' }}">Ürünler</a>
-      <a href="{{ url_for('stores') }}" class="{{ 'active' if request.endpoint == 'stores' }}">Mağazalar</a>
-      <a href="{{ url_for('consignments') }}" class="{{ 'active' if request.endpoint == 'consignments' }}">Konsinyeler</a>
+      <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+      <a href="{{ url_for('products') }}" class="{{ 'active' if request.endpoint == 'products' }}">Products</a>
+      <a href="{{ url_for('stores') }}" class="{{ 'active' if request.endpoint == 'stores' }}">Stores</a>
+      <a href="{{ url_for('consignments') }}" class="{{ 'active' if request.endpoint == 'consignments' }}">Consignments</a>
     </nav>
   </header>
   <main class="container">
     {% block content %}{% endblock %}
   </main>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+    }
+  </script>
 </body>
 </html>

@@ -1,47 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Ürünler · Konsinye Takip{% endblock %}
+{% block title %}Products · Consignment Tracker{% endblock %}
 {% block content %}
-  <h1>Ürünler</h1>
+  <h1>Products</h1>
 
   <section class="form-card">
-    <h2>Yeni Ürün Ekle</h2>
+    <h2>Add New Product</h2>
     <form method="post" action="{{ url_for('add_product') }}" class="inline-form">
-      <label>Ürün Adı
-        <input type="text" name="name" required placeholder="Örn. İnci Kolye">
+      <label>Product Name
+        <input type="text" name="name" required placeholder="e.g. Pearl Necklace">
       </label>
-      <label>Kategori
+      <label>Category
         <select name="category">
           {% for cat in categories %}
           <option value="{{ cat }}">{{ cat }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Maliyet (TL)
+      <label>Cost ($)
         <input type="number" name="cost_price" step="0.01" min="0" required>
       </label>
-      <button type="submit">Ekle</button>
+      <button type="submit">Add</button>
     </form>
   </section>
 
   <section class="table-card">
     <table>
       <thead>
-        <tr><th>Ürün</th><th>Kategori</th><th>Maliyet</th><th></th></tr>
+        <tr><th>Product</th><th>Category</th><th>Cost</th><th></th></tr>
       </thead>
       <tbody>
         {% for p in products %}
         <tr>
           <td>{{ p.name }}</td>
           <td>{{ p.category }}</td>
-          <td>{{ "%.2f"|format(p.cost_price) }} TL</td>
+          <td>${{ "%.2f"|format(p.cost_price) }}</td>
           <td>
-            <form method="post" action="{{ url_for('delete_product', product_id=p.id) }}" onsubmit="return confirm('Silinsin mi?');">
-              <button type="submit" class="danger">Sil</button>
+            <form method="post" action="{{ url_for('delete_product', product_id=p.id) }}" onsubmit="return confirm('Delete this product?');">
+              <button type="submit" class="danger">Delete</button>
             </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="4">Henüz ürün eklenmedi.</td></tr>
+        <tr><td colspan="4">No products yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -4,14 +4,14 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
-CATEGORIES = ["Kolye", "Bileklik", "Yüzük", "Küpe", "Diğer"]
-AGREEMENT_TYPES = ["komisyon", "kira"]
-STATUSES = ["beklemede", "satildi", "iade"]
+CATEGORIES = ["Necklace", "Bracelet", "Ring", "Earring", "Other"]
+AGREEMENT_TYPES = ["commission", "rent"]
+STATUSES = ["pending", "sold", "returned"]
 
 STATUS_LABELS = {
-    "beklemede": "Mağazada Bekliyor",
-    "satildi": "Satıldı",
-    "iade": "İade Edildi",
+    "pending": "In Store",
+    "sold": "Sold",
+    "returned": "Returned",
 }
 
 
@@ -21,7 +21,7 @@ class Store(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     contact = db.Column(db.String(200))
-    agreement_type = db.Column(db.String(20), nullable=False, default="komisyon")
+    agreement_type = db.Column(db.String(20), nullable=False, default="commission")
     agreement_value = db.Column(db.Float, nullable=False, default=0)
     created_at = db.Column(db.Date, default=date.today)
 
@@ -31,9 +31,9 @@ class Store(db.Model):
 
     @property
     def agreement_label(self):
-        if self.agreement_type == "kira":
-            return f"Sabit Kira: {self.agreement_value:.2f} TL"
-        return f"Komisyon: %{self.agreement_value:.0f}"
+        if self.agreement_type == "rent":
+            return f"Fixed Rent: ${self.agreement_value:.2f}"
+        return f"Commission: {self.agreement_value:.0f}%"
 
 
 class Product(db.Model):
@@ -41,7 +41,7 @@ class Product(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
-    category = db.Column(db.String(50), nullable=False, default="Diğer")
+    category = db.Column(db.String(50), nullable=False, default="Other")
     cost_price = db.Column(db.Float, nullable=False, default=0)
     created_at = db.Column(db.Date, default=date.today)
 
@@ -59,7 +59,7 @@ class Consignment(db.Model):
     quantity = db.Column(db.Integer, nullable=False, default=1)
     unit_sale_price = db.Column(db.Float, nullable=False, default=0)
     date_sent = db.Column(db.Date, default=date.today)
-    status = db.Column(db.String(20), nullable=False, default="beklemede")
+    status = db.Column(db.String(20), nullable=False, default="pending")
     date_resolved = db.Column(db.Date)
     actual_sale_price = db.Column(db.Float)
 
@@ -69,16 +69,16 @@ class Consignment(db.Model):
 
     @property
     def revenue(self):
-        if self.status != "satildi":
+        if self.status != "sold":
             return 0.0
         price = self.actual_sale_price or self.unit_sale_price
         return price * self.quantity
 
     @property
     def store_share(self):
-        if self.status != "satildi":
+        if self.status != "sold":
             return 0.0
-        if self.store.agreement_type == "komisyon":
+        if self.store.agreement_type == "commission":
             return self.revenue * (self.store.agreement_value / 100)
         return 0.0
 
@@ -88,6 +88,6 @@ class Consignment(db.Model):
 
     @property
     def profit(self):
-        if self.status != "satildi":
+        if self.status != "sold":
             return 0.0
         return self.owner_share - (self.product.cost_price * self.quantity)
